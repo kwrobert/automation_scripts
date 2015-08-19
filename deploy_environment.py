@@ -193,7 +193,6 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
     flavor_info = existing_resources["nova flavor-list"]
     print flavor_info
     quit()
-    ### A random change to test github
     for flavor in flavor_info:
         uuid = flavor[0]
         name = flavor[1]
