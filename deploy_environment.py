@@ -191,36 +191,54 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
         ExistingInfrastructure.AddFlavor(properties['name'],flavor,properties)
     volume_info = existing_resources["cinder list"]
     for volume in volume_info:
-        properties = {key.lower().replace(" ","_"):value for key,value in flavor.iteritems()}
+        volume = {key.lower().replace(" ","_"):value for key,value in volume.iteritems()}
+        properties = volume.copy()
         properties['name'] = properties['display_name']
         for prop in ('display_name','id','attached_to','bootable','status'):
             del properties[prop]
         volume['attachments'] = volume['attached_to'] 
         del volume['attached_to']
-        print properties
-        print volume
-        quit()
         ExistingInfrastructure.AddVolume(properties['name'],volume,properties)
     instance_info = existing_resources["nova list"]
-    for instance in instance_info[1:]:
-        uuid = instance[0]
-        name = instance[1]
-        networks = instance[5].split(";")
-        networks_dict = {}
-        for i in range(len(networks)):
-            net_info = [el.lstrip().rstrip() for el in networks[i].split("=")]
-            networks[i] = ("network",net_info[0])
-            networks_dict[net_info[0]] = net_info[1]
-        raw_props = existing_resources["nova show"][name]
-        attributes = {}
-        for prop in raw_props:
-            attributes[prop[0]] = prop[1]
-        attributes["flavor"] = attributes["flavor"].split()[0]
-        properties = {"name":name,"networks":networks,"flavor":attributes["flavor"]}
-        InstanceObject = sT.BasicObject("Nova","Server",name,attributes,properties)
-        print "Attributes are: ",InstanceObject.attributes
-        print "Properties are: ",InstanceObject.properties 
-        ExistingInfrastructure.AddInstance(InstanceObject)
+    for instance in instance_info:
+        properties = {key.lower().replace(" ","_"):value for key,value in instance.iteritems()}
+        raw_props = existing_resources['nova show'][properties['name']]
+        raw_props['flavor'] = raw_props['flavor'].split().pop(-1)
+        net_info = properties['networks'].split(";")
+        networks = []
+        for network in net_info:
+            items = network.split("=")
+            net_name = items[0].strip()
+            ip = items[1].strip()
+            name_tup = ("network",net_name)
+            ip_tup = ('fixed_ip',ip)
+            networks.append(name_tup)
+            networks.append(ip_tup)
+        properties['networks'] = networks
+        for key in ('power_state','task_state','id','status'):
+            del properties[key]
+        properties['image'] = raw_props['image'].split().pop(-1).lstrip('(').rstrip(')')
+          
+        print properties
+        print
+        print raw_props 
+        quit()
+        #networks = instance[5].split(";")
+        #networks_dict = {}
+        #for i in range(len(networks)):
+        #    net_info = [el.lstrip().rstrip() for el in networks[i].split("=")]
+        #    networks[i] = ("network",net_info[0])
+        #    networks_dict[net_info[0]] = net_info[1]
+        #raw_props = existing_resources["nova show"][name]
+        #attributes = {}
+        #for prop in raw_props:
+        #    attributes[prop[0]] = prop[1]
+        #attributes["flavor"] = attributes["flavor"].split()[0]
+        #properties = {"name":name,"networks":networks,"flavor":attributes["flavor"]}
+        #InstanceObject = sT.BasicObject("Nova","Server",name,attributes,properties)
+        #print "Attributes are: ",InstanceObject.attributes
+        #print "Properties are: ",InstanceObject.properties 
+        #ExistingInfrastructure.AddInstance(InstanceObject)
     print ExistingInfrastructure
 
 ################################################################################
