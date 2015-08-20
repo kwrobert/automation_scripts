@@ -4,6 +4,7 @@
 # Script: get_instance_info.sh 
 # Author: Kyle Robertson
 # Date: August 12, 2015
+# Company: Worlcom Exchange Inc.
 # Useage: ./get_instance_info.sh control_ip_address master_rc_file_path rc_file_name openstack_password instance_name
 # Description: Collects more detailed information about a given Openstack Instance. Outputs that information
 # in YAML format. 

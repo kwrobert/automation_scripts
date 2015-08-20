@@ -2,7 +2,7 @@
 # Script: openstack_objects.py
 # Author: Kyle Robertson
 # Date: August 11, 2015
-# Useage: python deploy_environment.py -h
+# Company: Worlcom Exchange Inc.
 # Description: This module defines the classes that represent all the objects/resources contained within an OpenStack Virtual Environment 
 #####################################################################################################
 try:
@@ -24,7 +24,9 @@ class OpenStack_Virtual_Infrastructure(object):
     def __init__(self,template_version):
         self.template_version = template_version
         self.resources = {}
-        self.object_types = ["Network","Subnet","NetworkPort","Volume","VolumeAttachment","Instance","Router","RouterInterface"]
+        self.object_types = ["Network","Subnet","NetworkPort","Volume","VolumeAttachment","Instance","Router","RouterInterface","Image","Flavor"]
+        # List determines what resources will be skipped when building Heat template
+        self.skiplist = ["Image","Flavor"]
     #--------------------------------------------------------------------------#
     def AddNetwork(self,net_name,attributes,properties):
         '''Creates a network object and adds it to the virtual infrastructure'''
@@ -105,6 +107,38 @@ again will erase the old object! Are you sure you want to overwrite the old obje
                 pass
         else:
             self.resources[key] = router_object
+    #--------------------------------------------------------------------------# 
+    def AddImage(self,image_name,attributes,properties):
+        '''Creates an image object and adds it to the list of virtual resources'''
+        image_object = Image(image_name,attributes,properties)
+        key = image_object.type+"_"+image_object.name
+        if key in self.resources.keys():
+            prompt = "An object of this type and name already exists in your environment, adding it\
+again will erase the old object! Are you sure you want to overwrite the old object? (y/n): "
+            usr_inpt = raw_input(prompt) 
+            response = sT.ResponseLoop(usr_inpt,"[yn]",prompt)
+            if response == "y":
+                self.resources[key] = image_object
+            else:
+                pass
+        else:
+            self.resources[key] = image_object
+    #--------------------------------------------------------------------------# 
+    def AddFlavor(self,flavor_name,attributes,properties):
+        '''Creates an image object and adds it to the list of virtual resources'''
+        flavor_object = Flavor(flavor_name,attributes,properties)
+        key = flavor_object.type+"_"+flavor_object.name
+        if key in self.resources.keys():
+            prompt = "An object of this type and name already exists in your environment, adding it\
+again will erase the old object! Are you sure you want to overwrite the old object? (y/n): "
+            usr_inpt = raw_input(prompt) 
+            response = sT.ResponseLoop(usr_inpt,"[yn]",prompt)
+            if response == "y":
+                self.resources[key] = flavor_object
+            else:
+                pass
+        else:
+            self.resources[key] = flavor_object
     #--------------------------------------------------------------------------#
     def AddVolumeAttachment(self,attachment_name,docking_instance_name,attaching_volume_name):
         '''Creates a volume attachment between and existing instance and volume, then adds the 
@@ -137,8 +171,8 @@ again will erase the old object! Are you sure you want to overwrite the old obje
             self.resources[attachmentkey] = attachment_object
     #--------------------------------------------------------------------------#
     def AddRouterInterface(self,interface_name,docking_router_object,attaching_subnet_object):
-        '''Creates a volume attachment between and existing instance and volume, then adds the 
-        attachment to the virtual infrastructure'''
+        '''Creates a router interface, attaches a subnet to it, and adds it to the pool of 
+        resources'''
         # Ensure the docking router and attaching subnet exist
         routerkey = "Router_"+docking_router_object.name
         subnetkey = "Subnet_"+attaching_subnet_object.name
@@ -216,9 +250,12 @@ again will erase the old object! Are you sure you want to overwrite the old obje
     def __repr__(self):
         base = "heat_template_version: %s\n\nresources:\n"%self.template_version
         for key,resource in self.resources.iteritems():
-            resource_section = resource.__repr__()
-            for line in resource_section.splitlines():
-                base += "    "+line+"\n"
+            if resource.type in self.skiplist:
+                pass
+            else:
+                resource_section = resource.__repr__()
+                for line in resource_section.splitlines():
+                    base += "    "+line+"\n"
         return base
 ################################################################################
                 
@@ -348,7 +385,7 @@ class Subnet(BaseObject):
 ################################################################################  
 class Instance(BaseObject):
     '''The class that defines functionality of an OS Instance object. Inherits 
-from BasicObject and has a Network Port and VolumeAttachment'''
+from BaseObject and has a Network Port and VolumeAttachment'''
     def __init__(self,resourcename,attributes,properties):
         self.identifier = "OS::Nova::Server"
         self.type = "Instance"
@@ -390,7 +427,7 @@ class NetworkPort(BaseAttachmentObject):
         self.properties = {"network":docking_network,"fixed_ips":[("subnet_id",attaching_subnet)]}
 ################################################################################       
 class Volume(BaseObject):
-    '''The class that defines the functionality of an OS Volume object. Inherits from BasicObject and has a VolumeAttachment'''
+    '''The class that defines the functionality of an OS Volume object. Inherits from BaseObject and has a VolumeAttachment'''
     def __init__(self,resourcename,attributes,properties):
         self.identifier = "OS::Cinder::Volume"
         self.type = "Volume"
@@ -426,26 +463,23 @@ class RouterInterface(BaseAttachmentObject):
         super(RouterInterface,self).__init__(interfacename,docking_router,attaching_subnet)
         self.properties = {"router_id":"{ get_resource: %s}"%docking_router.name,"subnet":"{ get_resource: %s }"%attaching_subnet.name}
 ################################################################################  
-
-     
-          
-               
-                    
-                         
-                              
-                                   
-                                        
-                                                  
-class InstanceFlavor:
-    def __init__(self,resourcename, **properties):
+class Image(BaseObject):
+    '''The class that defines the functionality for an Openstack Image object. Inherits from Base Object'''
+    def __init__(self,imagename,attributes,properties):
+        self.identifier = "OS::Glance::Image"
+        self.type = "Image"
+        super(Image,self).__init__(imagename,attributes,properties)  
+    #!!!!!!!!!! This class is unique and needs additional functionality. There
+    #!!!!!!!!!! are many different types of images, and work needs to be done on
+    #!!!!!!!!!! them to make them bootable. Lots of post configuration also needs
+    #!!!!!!!!!! to be done. For not we just need the list of available images in the
+    #!!!!!!!!!! environment, and they will not be added as a resource in the YAML'
+    #!!!!!!!!!! template file 
+################################################################################                                                  
+class Flavor(BaseObject):
+    def __init__(self,flavorname,attributes,properties):
         self.identifier = "OS::Nova::Flavor"
-        self.name = resourcename
-        self.properties = properties
-    def __repr__(self):
-        base = """%s
-    type: %s
-    properties:""" % (self.name,self.identifier)
-        for prop, val in self.properties.iteritems():
-            base += "\n        %s: %s"%(prop,val)
-        return base 
+        self.name = flavorname
+        self.type = "Flavor"
+        super(Flavor,self).__init__(flavorname,attributes,properties)
 ################################################################################        

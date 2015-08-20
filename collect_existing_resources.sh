@@ -4,6 +4,7 @@
 # Script: collect_existing_resources.sh 
 # Author: Kyle Robertson
 # Date: August 10, 2015
+# Company: Worlcom Exchange Inc.
 # Useage: ./collect_existing_resources.sh control_ip_address master_rc_file_path rc_file_name openstack_password
 # Description: This script is intended to be executed on the Fuel Master node within Mirantis 
 # Openstack. It uses SSH to access the control node from the master node and executes CLI commands for

@@ -1,3 +1,11 @@
+#####################################################################################################
+# Script: script_tools.py
+# Author: Kyle Robertson
+# Date: August 11, 2015
+# Company: Worlcom Exchange Inc.
+# Description: This module provides some simple, reusable functions for other scripts
+#####################################################################################################
+
 try:
     import subprocess
     import re 

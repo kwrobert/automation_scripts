@@ -2,6 +2,7 @@
 # Script: deploy_environment.py
 # Author: Kyle Robertson
 # Date: August 11, 2015
+# Company: Worlcom Exchange Inc.
 # Useage: python deploy_environment.py -h
 # Description: This script is intended to be executed on the Fuel Master node within Mirantis 
 # Openstack. It uses SSH to access the control node from the master node and harvests all the 
@@ -178,46 +179,28 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
         attributes = {"admin_state_up":props["admin_state_up"],"name":name,"status":props["status"],"subnets":props['subnets'],'tenant_id':props['tenant_id']}
         properties = {"admin_state_up":props["admin_state_up"],"name":name,"shared":props["shared"],"tenant_id":props["tenant_id"]}
         ExistingInfrastructure.AddNetwork(name,attributes,properties)
-    image_info = existing_resources["glance image-list"]
+    image_info = existing_resources["glance image-list"] 
     for image in image_info:
-        properties = {key.lower().replace(" ","_"):value for key,value in image_info.iteritems()}
-        #properties = {}
-        #for key, value in image.iteritems():
-        #    new_key = key.lower()
-        #    new_key = new_key.replace(" ","_")
-        #    properties[new_key] = value
+        properties = {key.lower().replace(" ","_"):value for key,value in image.iteritems()}
         del properties['status']
         del properties['size']
-        #ExistingInfrastructure.AddImage(properties['name'],{},properties)
-        #!!!!! Need to implement an AddImage methods
+        ExistingInfrastructure.AddImage(properties['name'],image,properties)
     flavor_info = existing_resources["nova flavor-list"]
-    print flavor_info
-    quit()
     for flavor in flavor_info:
-        uuid = flavor[0]
-        name = flavor[1]
-        ram = flavor[2]
-        disk = flavor[3]
-        ephemeral = flavor[4]
-        swap = flavor[5]
-        vcpus = flavor[6]
-        rxtx_factor = flavor[7]
-        properties = {"name":name,"uuid":uuid,"ram":ram,"disk":disk,"ephemeral":ephemeral,"swap":swap,"vcpus":vcpus,"rxtx_factor":rxtx_factor}
-        attributes = properties
-        FlavorObject = sT.BasicObject("Nova","Flavor",name,attributes,properties)
-        ExistingInfrastructure.AddFlavor(FlavorObject)
+        properties = {key.lower().replace(" ","_"):value for key,value in flavor.iteritems()}
+        ExistingInfrastructure.AddFlavor(properties['name'],flavor,properties)
     volume_info = existing_resources["cinder list"]
-    for volume in volume_info[1:]:
-        uuid = volume[0]
-        status = volume[1]
-        name = volume[2]
-        size = volume[3]
-        volume_type = volume[4]
-        attachments = volume[5]
-        properties = {"name":name,"volume_type":volume_type,"size":size}
-        attributes = {"id":uuid,"status":status,"name":name,"volume_type":volume_type,"size":size,"attachments":attachments}
-        VolumeObject = sT.BasicObject("Cinder","Volume",name,attributes,properties)
-        ExistingInfrastructure.AddVolume(VolumeObject)
+    for volume in volume_info:
+        properties = {key.lower().replace(" ","_"):value for key,value in flavor.iteritems()}
+        properties['name'] = properties['display_name']
+        for prop in ('display_name','id','attached_to','bootable','status'):
+            del properties[prop]
+        volume['attachments'] = volume['attached_to'] 
+        del volume['attached_to']
+        print properties
+        print volume
+        quit()
+        ExistingInfrastructure.AddVolume(properties['name'],volume,properties)
     instance_info = existing_resources["nova list"]
     for instance in instance_info[1:]:
         uuid = instance[0]
