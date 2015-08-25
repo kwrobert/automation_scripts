@@ -138,9 +138,28 @@ Openstack.
                 text[i] = text[i].split("|")
                 del text[i][0]
                 del text[i][-1]
-                text[i] = [string.lstrip().rstrip() for string in text[i]]  
+                text[i] = [string.strip() for string in text[i]]  
+            # Check for any row entries that span multiple lines and fix them
+            del_list = []
+            for n in range(1,len(text)):
+                row = text[n]
+                true_els = len(filter(None,row))
+                false_els = len(row) - true_els
+                # If the number of empty elements is greater than the number of filled elements
+                # this row is supposed to be additional data in cells of the previous row. So
+                # fix it
+                if false_els > true_els:
+                    prev_row = text[n-1]
+                    for i in range(len(row)):
+                        prev_row[i] = prev_row[i]+","+row[i]
+                        prev_row[i] = prev_row[i].strip(', ')
+                    text[n-1] = prev_row
+                    del_list.append(n)
+            for ind in del_list:
+                del text[ind]
             # Get the headers
             headers = text.pop(0)
+            headers = [header.lower().replace(" ","_") for header in headers]
             # Build the list of dictionaries. Each row in the table gets its own dictionary
             # so each element of this list corresponds to a row in the table. The keys of the 
             # dict are the column headers, values the value of the header cell in that particular

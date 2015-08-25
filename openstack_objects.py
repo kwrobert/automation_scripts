@@ -200,22 +200,22 @@ again will erase the old object! Are you sure you want to overwrite the old obje
         else:
             self.resources[interfacekey] = interface_object
     #--------------------------------------------------------------------------#
-    def AddNetworkPort(self,port_name,dockingnetwork_name,attachingsubnet_name):
+    def AddNetworkPort(self,port_name,dockingnetwork_obj,attachingsubnet_obj):
         '''Creates a network port, docks it on a network, attaches a subnet IP, then adds it to the 
         virtual infrastructure'''
         # Ensure the docking network and attaching subnet exist
-        netkey = "Network_"+dockingnetwork_name
-        subnetkey = "Subnet_"+attachingsubnet_name
+        netkey = "Network_"+dockingnetwork_obj.name
+        subnetkey = "Subnet_"+attachingsubnet_obj.name
         if netkey in self.resources.keys():
             pass
         else:
-            raise NameError("No network named %s to attach to!"%dockingnetwork_name)
+            raise NameError("No network named %s to attach to!"%dockingnetwork_obj.name)
         if subnetkey in self.resources.keys():
             pass
         else:
-            raise NameError("No subnet named %s to attach to!"%attachingsubnet_name)
+            raise NameError("No subnet named %s to attach to!"%attachingsubnet_obj.name)
         # Create port object and key, then add dock and attachment 
-        port_object = NetworkPort(port_name,dockingnetwork_name,attachingsubnet_name)
+        port_object = NetworkPort(port_name,dockingnetwork_obj,attachingsubnet_obj)
         portkey = port_object.type+"_"+port_object.name
         # Add to infrastructure
         if portkey in self.resources.keys():
@@ -231,20 +231,24 @@ again will erase the old object! Are you sure you want to overwrite the old obje
             self.resources[portkey] = port_object
     #--------------------------------------------------------------------------# 
     def CheckType(self,object_type):
+        '''Check to make sure the type inputted by the user exists in the infrastructure'''
         if not object_type in self.object_types:
             raise TypeError("%s is not a valid Openstack object type, or this type has not yet been implemented"%object_type)
         else:
             pass
     #--------------------------------------------------------------------------#
     def GetObject(self,object_type,object_name):
+        '''Get a specific object of a particular type and name'''
         self.CheckType(object_type)
         key = object_type+"_"+object_name
         return self.resources[key]
     #--------------------------------------------------------------------------# 
     def GetObjectType(self,object_type):
+        '''Retrieve a dictionary containing all objects of a certain type'''
         self.CheckType(object_type)
-        keys = filter(lambda key: object_type in key,self.resources.keys())
-        type_dict = {key: self.resources[key] for key in keys}
+        keys = filter(lambda(key): key.split('_')[0].strip() == object_type, self.resources.keys())
+        names = [key.split('_',1)[-1] for key in keys]
+        type_dict = {names[i]: self.resources[keys[i]] for i in range(len(keys))}
         return type_dict
     #--------------------------------------------------------------------------#  
     def __repr__(self):
@@ -391,7 +395,7 @@ from BaseObject and has a Network Port and VolumeAttachment'''
         self.type = "Instance"
         super(Instance,self).__init__(resourcename,attributes,properties)
     def __repr__(self):
-        base = """%s
+        base = """%s:
     type: %s\n""" % (self.name,self.identifier)
         if self.properties:
             base += """    properties:"""
@@ -424,7 +428,26 @@ class NetworkPort(BaseAttachmentObject):
         self.identifier = "OS::Neutron::Port"
         self.type = "NetworkPort"
         super(NetworkPort,self).__init__(portname,docking_network,attaching_subnet)
-        self.properties = {"network":docking_network,"fixed_ips":[("subnet_id",attaching_subnet)]}
+        self.properties = {"network":"{ get_resource: %s }"%self.docking_object_name,"fixed_ips":[("subnet_id","{ get_resource: %s }"%self.attaching_object_name)]}
+    def __repr__(self):
+        base = """%s:
+    type: %s\n""" % (self.name,self.identifier)
+        if self.properties:
+            base += """    properties:"""
+            for prop, val in self.properties.iteritems():
+                if type(val) == list:
+                    base += "\n        %s:"%prop
+                    for tup in val:
+                        subprop = tup[0]
+                        subval = tup[1]
+                        base += "\n            - %s: %s"%(subprop,subval)
+                elif type(val) == dict:
+                    base += "\n        %s:"%prop
+                    for subprop,subval in val.iteritems():
+                        base += "\n            - %s: %s"%(subprop,subval)
+                else:    
+                    base += "\n        %s: %s"%(prop,val)
+        return base  
 ################################################################################       
 class Volume(BaseObject):
     '''The class that defines the functionality of an OS Volume object. Inherits from BaseObject and has a VolumeAttachment'''

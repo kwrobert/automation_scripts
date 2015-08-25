@@ -21,6 +21,7 @@ try:
     import re
     import itertools
     import openstack_objects as cL 
+    import copy
 except ImportError,output:
     print "%s installed on your machine or within your current Python environment. \
 Please install that package and re-run this script."%output
@@ -134,18 +135,18 @@ like to operate on from the following list?\n"
         data = sT.TableParser(text) 
         # Remove the Field, Value key nonsense and make a normal dictionary where key is the property
         # and value is the state of that property
-        data = { el["Field"]:el["Value"] for el in data}       
+        data = { el["field"]:el["value"] for el in data}       
         network_info[name] = data
     result_dict["neutron net-show"] = network_info
     # Retrieve more detailed information about each instance
     instance_info = {}
     for instance in result_dict["nova list"]:
-        name = instance["Name"]
+        name = instance["name"]
         stdin,stdout,stderr = master_ssh.exec_command("./scripts/get_instance_info.sh %s %s %s %s %s"%(control_ip,remote_rcfile_loc,rc_file_name,OS_passwd,name))
         text = stdout.read()
         text = text.strip("Please enter your OpenStack Password:")
         data = sT.TableParser(text)
-        data = { el["Property"]:el["Value"] for el in data} 
+        data = { el["property"]:el["value"] for el in data} 
         instance_info[name] = data
     result_dict["nova show"] = instance_info
         
@@ -176,9 +177,25 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
     for network in network_info:
         name = network['name']
         props = more_network_info[name]
-        attributes = {"admin_state_up":props["admin_state_up"],"name":name,"status":props["status"],"subnets":props['subnets'],'tenant_id':props['tenant_id']}
+        attributes = {"admin_state_up":props["admin_state_up"],"name":name,"status":props["status"],"subnets":props['subnets'],'tenant_id':props['tenant_id'],'id':network['id']}
         properties = {"admin_state_up":props["admin_state_up"],"name":name,"shared":props["shared"],"tenant_id":props["tenant_id"]}
         ExistingInfrastructure.AddNetwork(name,attributes,properties)
+    subnet_info = existing_resources['neutron subnet-list']
+    for subnet in subnet_info:
+        name = subnet['name']
+        ID = subnet['id']
+        # Find the parent network
+        for network_key,network_obj in ExistingInfrastructure.GetObjectType('Network').iteritems():
+            if ID in network_obj.attributes['subnets']:
+                network_id = network_obj.attributes['id']
+                tenant_id = network_obj.attributes['tenant_id']
+        allocation_pools = str(subnet['allocation_pools'].split(','))
+        allocation_pools = allocation_pools.replace("'","")
+        properties = {'name':name,'network':network_id,'tenant_id':tenant_id,'allocation_pools':allocation_pools,'cidr':subnet['cidr']}
+        attributes = subnet.copy()
+        attributes['network_id'] = network_id
+        attributes['tenant_id'] = tenant_id
+        ExistingInfrastructure.AddSubnet(name,attributes,properties)
     image_info = existing_resources["glance image-list"] 
     for image in image_info:
         properties = {key.lower().replace(" ","_"):value for key,value in image.iteritems()}
@@ -203,7 +220,7 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
     for instance in instance_info:
         properties = {key.lower().replace(" ","_"):value for key,value in instance.iteritems()}
         raw_props = existing_resources['nova show'][properties['name']]
-        raw_props['flavor'] = raw_props['flavor'].split().pop(-1)
+        properties['flavor'] = raw_props['flavor'].split().pop(0)
         net_info = properties['networks'].split(";")
         networks = []
         for network in net_info:
@@ -218,35 +235,14 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
         for key in ('power_state','task_state','id','status'):
             del properties[key]
         properties['image'] = raw_props['image'].split().pop(-1).lstrip('(').rstrip(')')
-          
-        print properties
-        print
-        print raw_props 
-        quit()
-        #networks = instance[5].split(";")
-        #networks_dict = {}
-        #for i in range(len(networks)):
-        #    net_info = [el.lstrip().rstrip() for el in networks[i].split("=")]
-        #    networks[i] = ("network",net_info[0])
-        #    networks_dict[net_info[0]] = net_info[1]
-        #raw_props = existing_resources["nova show"][name]
-        #attributes = {}
-        #for prop in raw_props:
-        #    attributes[prop[0]] = prop[1]
-        #attributes["flavor"] = attributes["flavor"].split()[0]
-        #properties = {"name":name,"networks":networks,"flavor":attributes["flavor"]}
-        #InstanceObject = sT.BasicObject("Nova","Server",name,attributes,properties)
-        #print "Attributes are: ",InstanceObject.attributes
-        #print "Properties are: ",InstanceObject.properties 
-        #ExistingInfrastructure.AddInstance(InstanceObject)
-    print ExistingInfrastructure
+        ExistingInfrastructure.AddInstance(properties['name'],raw_props,properties)
 
+    return ExistingInfrastructure
 ################################################################################
-def CheckOldResources(new_name, existing_resources, command):
-    old_names = existing_resources[command]
-    chain = itertools.chain.from_iterable(old_names)
+def CheckOldResources(new_name, existing_resources, object_type):
+    object_key = object_type+"_"+new_name
     n = 0
-    while new_name in chain:
+    while object_key in existing_resources.resources.keys():
         new_name = str(raw_input("That name is already in use by an existing resource! Please pick another one: "))
         new_name = str(sT.ResponseLoop(new_name,"^\S+$","Your name did not match the expected pattern. Please ensure there are no spaces and try again: "))
         n += 1 
@@ -255,9 +251,11 @@ def CheckOldResources(new_name, existing_resources, command):
             quit()
     return new_name             
 ################################################################################   
-def BuildNewInfrastructure(existing_resources, template_version):
+def BuildNewInfrastructure(existing_infrastructure, template_version):
     # Instantiate new virtual infrastructure object
     NewInfrastructure = cL.OpenStack_Virtual_Infrastructure(template_version)
+    # Instantiate hydrid infrastructure object by initializing from old infrastructure
+    HybridInfrastructure = copy.deepcopy(existing_infrastructure)
     # Add all the networks
     prompt = "How many networks would you like in your environment?: "
     num_nets = raw_input(prompt)
@@ -267,8 +265,9 @@ def BuildNewInfrastructure(existing_resources, template_version):
         print "Building network %i"%i
         net_name = raw_input(prompt)
         net_name = sT.ResponseLoop(net_name,'^\S+$',prompt)
-        net_name = str(CheckOldResources(net_name,existing_resources,"neutron net-list"))
+        net_name = str(CheckOldResources(net_name,existing_infrastructure,"Network"))
         NewInfrastructure.AddNetwork(net_name,{},{})
+        HybridInfrastructure.AddNetwork(net_name,{},{})
     # Add all the subnets to each network
     networks = NewInfrastructure.GetObjectType("Network")
     for network_name,network_object in networks.iteritems():
@@ -280,11 +279,12 @@ def BuildNewInfrastructure(existing_resources, template_version):
             prompt = "Please enter the name you wish to give this subnet. There must be no spaces: "
             subnet_name = raw_input(prompt)
             subnet_name = sT.ResponseLoop(subnet_name,'^\S+$',prompt)
-            subnet_name = str(CheckOldResources(subnet_name,existing_resources,"neutron subnet-list"))
+            subnet_name = str(CheckOldResources(subnet_name,existing_infrastructure,"Subnet"))
             prompt = "Please enter the CIDR for this subnet: "
             cidr = raw_input(prompt)
             cidr = sT.ResponseLoop(cidr,'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$',prompt)
-            NewInfrastructure.AddSubnet(subnet_name,{},{"cidr":cidr,"network_id":"{ get_resource: %s }"%network_object.name})
+            NewInfrastructure.AddSubnet(subnet_name,{'network_id':network_name},{"cidr":cidr,"network_id":"{ get_resource: %s }"%network_object.name})
+            HybridInfrastructure.AddSubnet(subnet_name,{'network_id':network_name},{"cidr":cidr,"network_id":"{ get_resource: %s }"%network_object.name})
             network_object.UpdateSubnets(subnet_name)
     # Create all the routers and router interfaces needed to interconnect subnets
     prompt = "How many routers would you like in your environment?: "
@@ -295,8 +295,9 @@ def BuildNewInfrastructure(existing_resources, template_version):
         prompt = "Please enter the name you wish to give this router. There must be no spaces: "
         router_name = raw_input(prompt)
         router_name = str(sT.ResponseLoop(router_name,'^\S+$',prompt))
-        router_name = str(CheckOldResources(router_name,existing_resources,"neutron router-list"))
+        router_name = str(CheckOldResources(router_name,existing_infrastructure,"Router"))
         NewInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: net04_ext }"}) # REMOVE THIS HARD CODING!!!!
+        HybridInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: net04_ext }"}) # REMOVE THIS HARD CODING!!!!
         prompt = "Which subnets would you like to connect this router to? Please enter the subnet names as a comma separated list with no spaces: "
         subnet_names_str = raw_input(prompt)
         subnet_names_str = sT.ResponseLoop(subnet_names_str,'([\S+][,\S+]*)',prompt)
@@ -304,21 +305,50 @@ def BuildNewInfrastructure(existing_resources, template_version):
         for subnet_name in subnet_names_list:
             interface_name = router_name+"_to_"+subnet_name+"_interface"
             NewInfrastructure.AddRouterInterface(interface_name,NewInfrastructure.resources["Router_"+router_name],NewInfrastructure.resources["Subnet_"+subnet_name])
+            HybridInfrastructure.AddRouterInterface(interface_name,HybridInfrastructure.resources["Router_"+router_name],HybridInfrastructure.resources["Subnet_"+subnet_name])
     # Create all instances
-    #prompt = "How many virtual machines would you like in your environment?: "
-    #num_instances = raw_input(prompt)
-    #num_instances = int(sT.ResponseLoop(num_routers,"^[0-9]+$",prompt))     
-    #for i in range(num_instances):
-    #    print "Building instance %i"%i
-    #    prompt = "Please enter the name you wish to give this instance. There must be no spaces: "
-    #    inst_name = raw_input(prompt)
-    #    inst_name = str(sT.ResponseLoop(inst_name,'^\S+$',prompt))
-    #    inst_name = str(CheckOldResources(inst_name,existing_resources,"nova list"))
-    #    prompt = "What flavor would you like to use to specify the virtual resources of this instance? Please choose from %s:"%str()
-    
-    
-    with open("deployment_test.yaml",'w+') as template_file:
+    prompt = "How many virtual machines would you like in your environment?: "
+    num_instances = raw_input(prompt)
+    num_instances = int(sT.ResponseLoop(num_instances,"^[0-9]+$",prompt))     
+    for i in range(num_instances):
+        print "Building instance %i"%i
+        prompt = "Please enter the name you wish to give this instance. There must be no spaces: "
+        inst_name = raw_input(prompt)
+        inst_name = str(sT.ResponseLoop(inst_name,'^\S+$',prompt))
+        inst_name = str(CheckOldResources(inst_name,existing_infrastructure,"Instance"))
+        prompt = "What flavor would you like to use to specify the virtual resources of this instance? Please choose from %s: "%str(existing_infrastructure.GetObjectType("Flavor").keys())
+        flavor = raw_input(prompt)
+        flavor = str(sT.ResponseLoop(flavor,'^\S+$',prompt))
+        while flavor not in existing_infrastructure.GetObjectType("Flavor").keys():
+            flavor = str(sT.ResponseLoop(flavor,'^\S+$',prompt))
+        prompt = "What image would you like to use to boot this instance? Please choose from %s: "%str(existing_infrastructure.GetObjectType("Image").keys())
+        image = raw_input(prompt)
+        image = str(sT.ResponseLoop(image,'^\S+$',prompt))
+        while image not in existing_infrastructure.GetObjectType("Image").keys():
+            image = str(sT.ResponseLoop(image,'^\S+$',prompt))
+        # Create all the network ports and attach them to subnets. Create list of port attachments for instance
+        prompt = "Which subnets would you like to connect this instance to? Please enter the subnet names as a comma separated list with no spaces: "
+        subnet_names_str = raw_input(prompt)
+        subnet_names_str = sT.ResponseLoop(subnet_names_str,'([\S+][,\S+]*)',prompt)
+        subnet_names_list = subnet_names_str.split(",")
+        ports = []
+        for subnet in subnet_names_list:
+            subnet_obj = NewInfrastructure.GetObject("Subnet",subnet)
+            network_obj = NewInfrastructure.GetObject('Network',subnet_obj.attributes['network_id'])
+            name = inst_name+'_to_'+subnet+'_port'
+            ports.append(('port','{ get_resource: %s }'%name))
+            NewInfrastructure.AddNetworkPort(name,network_obj,subnet_obj)
+            HybridInfrastructure.AddNetworkPort(name,network_obj,subnet_obj)
+        # Add instances to virtual infrastructure
+        NewInfrastructure.AddInstance(inst_name,{},{'name':inst_name,'image':image,'flavor':flavor,'networks':ports})
+        HybridInfrastructure.AddInstance(inst_name,{},{'name':inst_name,'image':image,'flavor':flavor,'networks':ports})
+    # Build template files 
+    with open("new_infrastructure.yaml",'w+') as template_file:
         template_file.write(NewInfrastructure.__repr__())
+    with open("old_infrastructure.yaml",'w+') as template_file:
+        template_file.write(existing_infrastructure.__repr__())
+    with open("hybrid_infrastructure.yaml",'w+') as template_file:
+        template_file.write(HybridInfrastructure.__repr__())
     
 ################################################################################
 def main():
@@ -354,14 +384,14 @@ into that node."""
     # Establish connection
     fuel_master_ssh = sT.CreateSSHConnection(fuel_mstr_ip,fuel_usr,fuel_passwd)
     
-    # Get the dictionary that has all the  information about the preexisting resources in the user's virtual environment
+    # Get the dictionary that has all the information about the preexisting resources in the user's virtual environment
     existing_resources = CollectExistingResources(fuel_master_ssh,args.env_RCfile)
 
     # Build the object that organizes and contains information about all the existing virtual infrastructure 
     existing_infrastructure = BuildExistingInfrastructureObject(existing_resources,fuel_mstr_ip,fuel_usr,fuel_passwd,args.template_version)
     
     # Poll the user about the resources they would like to create/add. Use their responses to build a new virtual infrastructure
-    #new_resources = BuildNewInfrastructure(existing_resources,args.template_version)
+    new_resources = BuildNewInfrastructure(existing_infrastructure,args.template_version)
     
     #!!!! It might be a nice feature to create a YAML file that can be used to redeploy the existing
     #!!!! environment from the information just collected

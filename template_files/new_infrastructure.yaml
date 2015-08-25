@@ -1,0 +1,31 @@
+heat_template_version: 2013-05-23
+
+resources:
+    MasterRouter:
+        type: OS::Neutron::Router
+        properties:
+            external_gateway_info: { network: net04_ext }
+    MasterRouter_to_public-subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: MasterRouter}
+            subnet: { get_resource: public-subnet }
+    MasterRouter_to_private-subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: MasterRouter}
+            subnet: { get_resource: private-subnet }
+    private-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: private }
+            cidr: 10.20.18.0/24
+    public-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: public }
+            cidr: 10.20.17.0/24
+    public:
+        type: OS::Neutron::Net
+    private:
+        type: OS::Neutron::Net

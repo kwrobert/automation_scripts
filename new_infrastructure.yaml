@@ -1,0 +1,33 @@
+heat_template_version: 2013-05-23
+
+resources:
+    MasterRouter:
+        type: OS::Neutron::Router
+        properties:
+            external_gateway_info: { network: net04_ext }
+    heat-inst-001_to_boner-subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: boner-subnet }
+            network: { get_resource: boner }
+    boner:
+        type: OS::Neutron::Net
+    heat-inst-001:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: heat-inst-001
+            flavor: m1.small
+            networks:
+                - port: { get_resource: heat-inst-001_to_boner-subnet_port }
+    boner-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: boner }
+            cidr: 10.20.31.0/24
+    MasterRouter_to_boner-subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: MasterRouter}
+            subnet: { get_resource: boner-subnet }

@@ -1,0 +1,135 @@
+heat_template_version: 2013-05-23
+
+resources:
+    test-est-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            allocation_pools: [{"start": "10.20.32.2",  "end": "10.20.32.254"}]
+            cidr: 10.20.32.0/24
+            name: test-est-subnet
+            network: 56194262-841d-4ddd-a665-f48df431bf76
+    heat-subnet-01:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            allocation_pools: [{"start": "10.10.10.1",  "end": "10.10.10.253"}]
+            cidr: 10.10.10.0/24
+            name: heat-subnet-01
+            network: f4666e44-129b-4e87-b3dd-04252d4bbf2d
+    internettester
+        type: OS::Nova::Server
+        properties:
+            name: internettester
+            image: 12135284-6a7a-4396-9675-4f6a4473a2bd
+            flavor: m1.micro
+            networks:
+                - network: net04
+                - fixed_ip: 192.168.111.8, 10.20.2.144
+    heat-instance-02
+        type: OS::Nova::Server
+        properties:
+            name: heat-instance-02
+            image: 12135284-6a7a-4396-9675-4f6a4473a2bd
+            flavor: m1.small
+            networks:
+                - network: heat-network-01
+                - fixed_ip: 10.10.10.1
+    heat-instance-01
+        type: OS::Nova::Server
+        properties:
+            name: heat-instance-01
+            image: 12135284-6a7a-4396-9675-4f6a4473a2bd
+            flavor: m1.small
+            networks:
+                - network: heat-network-01
+                - fixed_ip: 10.10.10.3
+    new-ext-net-tester
+        type: OS::Nova::Server
+        properties:
+            name: new-ext-net-tester
+            image: 12135284-6a7a-4396-9675-4f6a4473a2bd
+            flavor: m1.micro
+            networks:
+                - network: TestNetwork
+                - fixed_ip: 10.20.0.151
+    net04_ext:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            name: net04_ext
+            admin_state_up: True
+    net04__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            allocation_pools: [{"start": "192.168.111.2",  "end": "192.168.111.254"}]
+            cidr: 192.168.111.0/24
+            name: net04__subnet
+            network: f374c0f0-7914-4d81-9649-9326448393c8
+    net04_ext__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            allocation_pools: [{"start": "10.20.2.131",  "end": "10.20.2.254"}]
+            cidr: 10.20.2.0/24
+            name: net04_ext__subnet
+            network: 82ff2f3b-101b-4d04-8793-272436d29aa4
+    TestNetwork:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            name: TestNetwork
+            admin_state_up: True
+    TestUser_Subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: c2cd5843362f413c988c77696f74b708
+            allocation_pools: [{"start": "10.20.7.2",  "end": "10.20.7.254"}]
+            cidr: 10.20.7.0/24
+            name: TestUser_Subnet
+            network: ef9eca20-d309-4b7a-9d04-652801ff79e8
+    net04:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            name: net04
+            admin_state_up: True
+    TestNetwork_Subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            allocation_pools: [{"start": "10.20.0.150",  "end": "10.20.0.200"}, {"start": "10.20.0.50",  "end": "10.20.0.100"}]
+            cidr: 10.20.0.0/24
+            name: TestNetwork_Subnet
+            network: 67699a34-c1b9-458b-9d0a-73297cb5b896
+    UserTestNetwork:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: c2cd5843362f413c988c77696f74b708
+            name: UserTestNetwork
+            admin_state_up: True
+    heat-network-01:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            name: heat-network-01
+            admin_state_up: True
+    TestVolume:
+        type: OS::Cinder::Volume
+        properties:
+            name: TestVolume
+            volume_type: None
+            size: 50
+    test_ext:
+        type: OS::Neutron::Net
+        properties:
+            shared: True
+            tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+            name: test_ext
+            admin_state_up: True
