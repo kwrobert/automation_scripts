@@ -2,3 +2,4 @@
 admin-openrc.sh
 TestProject-openrc.sh
 *.pyc
+*.yaml
