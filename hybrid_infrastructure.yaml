@@ -28,6 +28,14 @@ resources:
             networks:
                 - network: net04
                 - fixed_ip: 192.168.111.8, 10.20.2.144
+    heat-inst-002:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: heat-inst-002
+            flavor: m1.small
+            networks:
+                - port: { get_resource: heat-inst-002_to_private-subnet_port }
     heat-inst-001:
         type: OS::Nova::Server
         properties:
@@ -36,6 +44,11 @@ resources:
             flavor: m1.small
             networks:
                 - port: { get_resource: heat-inst-001_to_public-subnet_port }
+    private-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: private }
+            cidr: 10.20.8.0/24
     new-ext-net-tester:
         type: OS::Nova::Server
         properties:
@@ -52,6 +65,12 @@ resources:
             admin_state_up: True
             name: net04_ext
             tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+    heat-inst-002_to_private-subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: private-subnet }
+            network: { get_resource: private }
     net04__subnet:
         type: OS::Neutron::Subnet
         properties:
@@ -60,6 +79,8 @@ resources:
             cidr: 192.168.111.0/24
             network: f374c0f0-7914-4d81-9649-9326448393c8
             name: net04__subnet
+    private:
+        type: OS::Neutron::Net
     net04_ext__subnet:
         type: OS::Neutron::Subnet
         properties:
@@ -102,6 +123,11 @@ resources:
             admin_state_up: True
             name: UserTestNetwork
             tenant_id: c2cd5843362f413c988c77696f74b708
+    MasterRouter_to_private-subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: MasterRouter}
+            subnet: { get_resource: private-subnet }
     TestVolume:
         type: OS::Cinder::Volume
         properties:
@@ -119,7 +145,7 @@ resources:
         type: OS::Neutron::Subnet
         properties:
             network_id: { get_resource: public }
-            cidr: 10.20.31.0/24
+            cidr: 10.20.7.0/24
     public:
         type: OS::Neutron::Net
     TestNetwork_Subnet:

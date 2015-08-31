@@ -173,7 +173,7 @@ def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrnam
     for network in network_info:
         name = network['name']
         props = more_network_info[name]
-        attributes = {"admin_state_up":props["admin_state_up"],"name":name,"status":props["status"],"subnets":props['subnets'],'tenant_id':props['tenant_id'],'id':network['id']}
+        attributes = {"admin_state_up":props["admin_state_up"],"name":name,"status":props["status"],"subnets":props['subnets'],'tenant_id':props['tenant_id'],'id':network['id'],'router:external':props['router:external']}
         properties = {"admin_state_up":props["admin_state_up"],"name":name,"shared":props["shared"],"tenant_id":props["tenant_id"]}
         ExistingInfrastructure.AddNetwork(name,attributes,properties)
     subnet_info = existing_resources['neutron subnet-list']
@@ -294,9 +294,9 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
         router_name = str(CheckOldResources(router_name,HybridInfrastructure,"Router"))
         ext_nets = []
         # Ask the user which external network they would like to use for the external gateway of the router
-        for network in HybridInfrastructure.GetObjectType("Network"):
-            if network.properties['router:external'] == 'True':
-                ext_nets.append(network.properties['name'])    
+        for network_name,network_obj in HybridInfrastructure.GetObjectType("Network").iteritems():
+            if ('router:external' in network_obj.attributes) and (network_obj.attributes['router:external'] == 'True'):
+                ext_nets.append(network_name)    
         prompt = "What external network would you like to use to give this router internet access? Please choose from %s: "%str(ext_nets)
         ext_gateway = raw_input(prompt)
         ext_gateway = str(sT.ResponseLoop(ext_gateway,'^\S+$',prompt))
