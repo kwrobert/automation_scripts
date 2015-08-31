@@ -5,6 +5,12 @@ resources:
         type: OS::Neutron::Router
         properties:
             external_gateway_info: { network: net04_ext }
+    heat-inst-001_to_public-subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: public-subnet }
+            network: { get_resource: public }
     test-est-subnet:
         type: OS::Neutron::Subnet
         properties:
@@ -22,16 +28,14 @@ resources:
             networks:
                 - network: net04
                 - fixed_ip: 192.168.111.8, 10.20.2.144
-    boner-subnet:
-        type: OS::Neutron::Subnet
+    heat-inst-001:
+        type: OS::Nova::Server
         properties:
-            network_id: { get_resource: boner }
-            cidr: 10.20.31.0/24
-    MasterRouter_to_boner-subnet_interface:
-        type: OS::Neutron::RouterInterface
-        properties:
-            router_id: { get_resource: MasterRouter}
-            subnet: { get_resource: boner-subnet }
+            image: TestVM
+            name: heat-inst-001
+            flavor: m1.small
+            networks:
+                - port: { get_resource: heat-inst-001_to_public-subnet_port }
     new-ext-net-tester:
         type: OS::Nova::Server
         properties:
@@ -64,8 +68,11 @@ resources:
             cidr: 10.20.2.0/24
             network: 82ff2f3b-101b-4d04-8793-272436d29aa4
             name: net04_ext__subnet
-    boner:
-        type: OS::Neutron::Net
+    MasterRouter_to_public-subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: MasterRouter}
+            subnet: { get_resource: public-subnet }
     TestNetwork:
         type: OS::Neutron::Net
         properties:
@@ -95,20 +102,6 @@ resources:
             admin_state_up: True
             name: UserTestNetwork
             tenant_id: c2cd5843362f413c988c77696f74b708
-    heat-inst-001_to_boner-subnet_port:
-        type: OS::Neutron::Port
-        properties:
-            fixed_ips:
-                - subnet_id: { get_resource: boner-subnet }
-            network: { get_resource: boner }
-    heat-inst-001:
-        type: OS::Nova::Server
-        properties:
-            image: TestVM
-            name: heat-inst-001
-            flavor: m1.small
-            networks:
-                - port: { get_resource: heat-inst-001_to_boner-subnet_port }
     TestVolume:
         type: OS::Cinder::Volume
         properties:
@@ -122,6 +115,13 @@ resources:
             admin_state_up: True
             name: test_ext
             tenant_id: 7a0fa56ea34443219ffdbe958e32b82c
+    public-subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: public }
+            cidr: 10.20.31.0/24
+    public:
+        type: OS::Neutron::Net
     TestNetwork_Subnet:
         type: OS::Neutron::Subnet
         properties:

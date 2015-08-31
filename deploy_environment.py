@@ -37,13 +37,11 @@ def CollectExistingResources(master_ssh,rc_file_path):
     stdin,stdout,stderr = master_ssh.exec_command("fuel env list")
     text = stdout.read()
     lines = sT.TableParser(text)
-    if len(lines) > 3:
-        environments = lines[1:]
+    if len(lines) >= 2:
         env_ids = []
-        for env in environments:
-            if env[1] == "operational":
-                env_ids.append(env[0])
-        print env_ids
+        for env in lines:
+            if env['status'] == "operational":
+                env_ids.append(env['id'])
         print "\nIt appears you have deployed multiple Openstack environments. Which environment would \
 like to operate on from the following list?\n"
         print text
@@ -101,10 +99,8 @@ like to operate on from the following list?\n"
     # Execute the main resource collection script and collect/display the output 
     print "Success! Executing resource collection scripts ..."
     
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    #OS_passwd = getpass.getpass("What is your Openstack password? (This is the password you use to log in to the Horizon Dashboard): ")
-    OS_passwd = "admin"
-    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # Get password used to source RC file
+    OS_passwd = getpass.getpass("What is your Openstack password? (This is the password you use to log in to the Horizon Dashboard): ")
     
     stdin,stdout,stderr = master_ssh.exec_command("./scripts/collect_existing_resources.sh %s %s %s %s"%(control_ip,remote_rcfile_loc,rc_file_name,OS_passwd))
     text = stdout.read()
@@ -165,7 +161,7 @@ the resources shown above, as this can cause conflicts and \nerrors during deplo
     master_ftp.close()
     master_ssh.close()
     
-    return result_dict
+    return result_dict, control_ip
 ################################################################################
 def BuildExistingInfrastructureObject(existing_resources,master_IP,master_usrname,master_pass,template_version):
 
@@ -265,7 +261,7 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
         print "Building network %i"%i
         net_name = raw_input(prompt)
         net_name = sT.ResponseLoop(net_name,'^\S+$',prompt)
-        net_name = str(CheckOldResources(net_name,existing_infrastructure,"Network"))
+        net_name = str(CheckOldResources(net_name,HybridInfrastructure,"Network"))
         NewInfrastructure.AddNetwork(net_name,{},{})
         HybridInfrastructure.AddNetwork(net_name,{},{})
     # Add all the subnets to each network
@@ -279,7 +275,7 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
             prompt = "Please enter the name you wish to give this subnet. There must be no spaces: "
             subnet_name = raw_input(prompt)
             subnet_name = sT.ResponseLoop(subnet_name,'^\S+$',prompt)
-            subnet_name = str(CheckOldResources(subnet_name,existing_infrastructure,"Subnet"))
+            subnet_name = str(CheckOldResources(subnet_name,HybridInfrastructure,"Subnet"))
             prompt = "Please enter the CIDR for this subnet: "
             cidr = raw_input(prompt)
             cidr = sT.ResponseLoop(cidr,'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$',prompt)
@@ -295,9 +291,19 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
         prompt = "Please enter the name you wish to give this router. There must be no spaces: "
         router_name = raw_input(prompt)
         router_name = str(sT.ResponseLoop(router_name,'^\S+$',prompt))
-        router_name = str(CheckOldResources(router_name,existing_infrastructure,"Router"))
-        NewInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: net04_ext }"}) # REMOVE THIS HARD CODING!!!!
-        HybridInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: net04_ext }"}) # REMOVE THIS HARD CODING!!!!
+        router_name = str(CheckOldResources(router_name,HybridInfrastructure,"Router"))
+        ext_nets = []
+        # Ask the user which external network they would like to use for the external gateway of the router
+        for network in HybridInfrastructure.GetObjectType("Network"):
+            if network.properties['router:external'] == 'True':
+                ext_nets.append(network.properties['name'])    
+        prompt = "What external network would you like to use to give this router internet access? Please choose from %s: "%str(ext_nets)
+        ext_gateway = raw_input(prompt)
+        ext_gateway = str(sT.ResponseLoop(ext_gateway,'^\S+$',prompt))
+        while ext_gateway not in ext_nets:
+            ext_gateway = str(sT.ResponseLoop(ext_gateway,'^\S+$',prompt))   
+        NewInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: %s }"%ext_gateway}) #!!! REMOVE THIS HARD CODING!!!!
+        HybridInfrastructure.AddRouter(router_name,{},{"external_gateway_info":"{ network: %s }"%ext_gateway}) #!!! REMOVE THIS HARD CODING!!!!
         prompt = "Which subnets would you like to connect this router to? Please enter the subnet names as a comma separated list with no spaces: "
         subnet_names_str = raw_input(prompt)
         subnet_names_str = sT.ResponseLoop(subnet_names_str,'([\S+][,\S+]*)',prompt)
@@ -315,7 +321,7 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
         prompt = "Please enter the name you wish to give this instance. There must be no spaces: "
         inst_name = raw_input(prompt)
         inst_name = str(sT.ResponseLoop(inst_name,'^\S+$',prompt))
-        inst_name = str(CheckOldResources(inst_name,existing_infrastructure,"Instance"))
+        inst_name = str(CheckOldResources(inst_name,HybridInfrastructure,"Instance"))
         prompt = "What flavor would you like to use to specify the virtual resources of this instance? Please choose from %s: "%str(existing_infrastructure.GetObjectType("Flavor").keys())
         flavor = raw_input(prompt)
         flavor = str(sT.ResponseLoop(flavor,'^\S+$',prompt))
@@ -349,6 +355,50 @@ def BuildNewInfrastructure(existing_infrastructure, template_version):
         template_file.write(existing_infrastructure.__repr__())
     with open("hybrid_infrastructure.yaml",'w+') as template_file:
         template_file.write(HybridInfrastructure.__repr__())
+################################################################################
+def DeployEnvironment(fuel_IP,fuel_usr,fuel_passwd,control_ip,rc_file_path):
+    master_ssh = sT.CreateSSHConnection(fuel_IP,fuel_usr,fuel_passwd)
+    # Get root dir of master node. Almost always is /root but this is safer and for some reason 
+    # paramiko does not like ~ expansion.
+    stdin,stdout,stderr = master_ssh.exec_command("echo ~/")
+    master_root = stdout.read().rstrip("\n")
+    stdin.close()
+    stdout.close()
+    stderr.close()
+    scripts_dir = os.path.join(master_root,"scripts")
+    rc_file_name = os.path.split(rc_file_path)[1]
+    remote_rcfile_loc = os.path.join(scripts_dir,rc_file_name)
+    # Add any template files and scripts you would like to be copied here. Make sure they exist 
+    # in the same directory as this script. 
+    file_names = [rc_file_name,"new_infrastructure.yaml","old_infrastructure.yaml","hybrid_infrastructure.yaml","deploy_stack.sh"]
+    # Open secure file transfer and copy all files to Fuel master node
+    master_ftp = master_ssh.open_sftp()
+    print "Staging template files and deployment scripts ..."
+    for script in file_names:
+        localpath = os.path.join(os.getcwd(),script)
+        destpath = os.path.join(scripts_dir,script)
+        try:
+            master_ftp.put(localpath,destpath)
+            if script == "deploy_stack.sh":
+                master_ftp.chmod(destpath,1)
+        except IOError:
+            master_ftp.mkdir(scripts_dir)
+            master_ftp.put(localpath,destpath) 
+            if script == "deploy_stack.sh":
+                master_ftp.chmod(destpath,1)  
+    print "Success! Executing script to deploy the requested environment!"
+            
+             
+    # Get password needed to source RC file
+    OS_passwd = getpass.getpass("What is your Openstack password? (This is the password you use to log in to the Horizon Dashboard): ")
+
+    # Execute deploy_stack to deploy environment specified by template file
+    stdin,stdout,stderr = master_ssh.exec_command("./scripts/deploy_stack.sh %s %s %s %s %s"%(control_ip,remote_rcfile_loc,rc_file_name,OS_passwd,"new_infrastructure.yaml"))
+    out = stdout.read()
+    err = stderr.read()
+    print out
+    print err
+    print "Success! You can view the progress of your deployment from the Horizon Dashboard"
     
 ################################################################################
 def main():
@@ -369,14 +419,11 @@ into that node."""
     print "\n"+"#"*88+"\n"
     
     # Get the SSH connection credentials for the user's Fuel Master Node.
-    #fuel_mstr_ip = str(raw_input("Please type the IP address of your Fuel Master Node: "))
-    #sT.CheckUserInput(fuel_mstr_ip,'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-    #fuel_usr = str(raw_input("Please type the root user name for your Fuel Master Node. There must be no spaces: "))
-    #sT.CheckUserInput(fuel_usr,'^\S+?')
-    #fuel_passwd = getpass.getpass(prompt="Enter root password:")
-    fuel_mstr_ip = "10.20.1.4"
-    fuel_usr="root"
-    fuel_passwd="Worldcom2015"
+    fuel_mstr_ip = str(raw_input("Please type the IP address of your Fuel Master Node: "))
+    sT.CheckUserInput(fuel_mstr_ip,'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+    fuel_usr = str(raw_input("Please type the root user name for your Fuel Master Node. There must be no spaces: "))
+    sT.CheckUserInput(fuel_usr,'^\S+?')
+    fuel_passwd = getpass.getpass(prompt="Enter root password:")
     
     # Verify network connectivity to Fuel Master Node
     sT.pingTest(fuel_mstr_ip)
@@ -385,35 +432,16 @@ into that node."""
     fuel_master_ssh = sT.CreateSSHConnection(fuel_mstr_ip,fuel_usr,fuel_passwd)
     
     # Get the dictionary that has all the information about the preexisting resources in the user's virtual environment
-    existing_resources = CollectExistingResources(fuel_master_ssh,args.env_RCfile)
+    existing_resources, control_IP = CollectExistingResources(fuel_master_ssh,args.env_RCfile)
 
     # Build the object that organizes and contains information about all the existing virtual infrastructure 
     existing_infrastructure = BuildExistingInfrastructureObject(existing_resources,fuel_mstr_ip,fuel_usr,fuel_passwd,args.template_version)
     
     # Poll the user about the resources they would like to create/add. Use their responses to build a new virtual infrastructure
-    new_resources = BuildNewInfrastructure(existing_infrastructure,args.template_version)
+    BuildNewInfrastructure(existing_infrastructure,args.template_version)
     
-    #!!!! It might be a nice feature to create a YAML file that can be used to redeploy the existing
-    #!!!! environment from the information just collected
-    #
-    # 1) Use existing resources dictionary to build a full old_infrastructure object for existing resources
-    # 2) Build YAML file for old infrastructure 
-    # 3) Use old_infrastructure object to fill necessary info for new_infrastructure object (images, flavors, etc.) 
-    # 4) Collect input from user to determine new resources 
-    # 5) Use new_infrastructure object to build new infrastructure YAML template
-    # 6) Send out script that executes new YAML template
-    #new_resources = DetermineNewResources(existing_resources)
-    #with open("test_stack.yaml",'a+') as template:
-    #    # Prepare the file with proper version
-    #    template.write("heat_template_version: %s\n\nresources:\n"%args.template_version)
-        
+    # Copy files to control node and use Heat to deploy environment 
+    DeployEnvironment(fuel_mstr_ip,fuel_usr,fuel_passwd,control_IP,args.env_RCfile)
     
-    #props = {"image" : "Ubuntu12.05", "ram" : "8GB","networks":[("network","public"),("network","private"),("network","test")]}
-    #atts = {"thing":"AnImportantThing","AnotherThing":"LessImportantThing"}
-    #test = cL.Instance("TestInstance",atts,props)
-    #print test
-    #string = test.__repr__()
-    #print string
-    #
 if __name__=='__main__':
     main()
