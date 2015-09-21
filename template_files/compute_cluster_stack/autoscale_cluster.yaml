@@ -1,0 +1,110 @@
+#####################################################################################################
+# Script: autoscale_cluster.yaml
+# Author: Kyle Robertson
+# Date: September 18, 2015
+# Company: Worlcom Exchange Inc.
+# Description: A HEAT template that deploys an autoscaling cluster of servers that scales up or down
+# based on CPU usage. Each server is part of a TORQUE pbs job scheduler and has all necessary services
+# to run TORQUE job scheduling pre-installed. 
+#####################################################################################################
+
+heat_template_version: 2014-10-16
+description: Homogenous compute cluster
+
+parameters:
+  cluster_size:
+    type: number
+    description: Minimum number of servers in the autoscaling cluster
+    constraints:
+      - range: {min: 2, max: 20}
+    default: 2
+  image:
+    type: string
+    label: Image name or ID
+    description: Bootable image used to boot all instances
+    default: CentOS 6
+  flavor:
+    type: string
+    label: Instance flavor
+    description: Type of flavor that defines virtual resources for instance
+    constraints:
+      - allowed_values: 
+        - m1.small
+        - m1.medium
+        - m1.large
+    default: m1.small
+  ssh_key:
+    type: string
+    label: Key name
+    description: Name for SSH keypair used to access instances
+    default: compute_host_key
+  internal_net:
+    type: string
+    label: Internal tenant network name or ID
+    description: Tenant network to attach instance to
+    
+resources:
+  compute_cluster:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      min_size: { get_param: cluster_size }
+      max_size: 20
+      resource:
+        type: OS::Nova::Server
+        properties:
+          name: compute_instance
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          key_name: { get_param: ssh_key }
+          networks:
+            - network: {get_param: internal_net} 
+          user_data_format: RAW
+          user_data: |
+            #cloud-config
+            users:
+              - name: demo
+                groups: sudo
+                shell: /bin/bash
+                sudo: ['ALL=(ALL) NOPASSWD:ALL']
+            chpasswd:
+              list: |
+                demo:demo-password
+            runcmd:
+              - touch /test.txt
+              - sudo apt-get install stress
+          
+  scale_up_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id : {get_resource: compute_cluster}
+      cooldown: 60
+      scaling_adjustment: 1
+  scale_down_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: compute_cluster}
+      cooldown: 60
+      scaling_adjustment: '-1'
+  high_cpu_alarm:
+    type: OS::Ceilometer::Alarm
+    properties:
+      description: Add instance if average CPU utilization of group is too high ( > 75% ) 
+      meter_name: cpu_util
+      statistic: avg
+      period: 30
+      evaluation_periods: 1
+      threshold: 75
+      comparison_operator: gt
+      alarm_actions:
+        - {get_attr: [scale_up_policy, alarm_url]}  
+      matching_metadata: {'metadata.user_ metadata.stack':{get_param: "OS::stack_id"}}  
+outputs:
+  server_ips:
+    description: List of IP addresses of the compute servers
+    value: {get_attr: [compute_cluster, outputs_list, networks, {get_param: network}, 0]}
+          
+    
+  
+  

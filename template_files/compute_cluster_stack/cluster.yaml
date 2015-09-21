@@ -1,0 +1,85 @@
+#####################################################################################################
+# Script: cluster_network.yaml
+# Author: Kyle Robertson
+# Date: September 18, 2015
+# Company: Worlcom Exchange Inc.
+# Description: A HEAT template that deploys the networking resources for the autoscale_cluster_yaml
+# stack
+#####################################################################################################
+
+heat_template_version: 2014-10-16
+description: Homogenous compute cluster
+
+parameters:
+    # Networking parameters
+    network_name:
+      type: string
+      label: Network Name
+      description: A short, descriptive name for the network of this computing cluster
+      constraints:
+        - allowed_pattern: "^[A-Za-z]+[a-zA-Z0-9_-]*$"
+    subnet_cidr:
+      type: string
+      label: Internal Subnet CIDR
+      description: "The CIDR of the subnet instances will connect to. Ex: 10.20.30.0/24"
+      constraints:
+        - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+/[0-9]+$"    
+    external_network:
+      type: string
+      label: External Network Name
+      description: The name of the external network where floating IP's for environment exist
+      default: net04_ext
+    # Computing parameters
+    cluster_size:
+      type: number
+      description: Minimum number of servers in the autoscaling cluster
+      constraints:
+        - range: {min: 2, max: 20}
+      default: 2
+    image:
+      type: string
+      label: Image name or ID
+      description: Bootable image used to boot all instances
+      default: CentOS 6
+    flavor:
+      type: string
+      label: Instance flavor
+      description: Type of flavor that defines virtual resources for instance
+      constraints:
+        - allowed_values: 
+          - m1.small
+          - m1.medium
+          - m1.large
+      default: m1.small
+    key:
+      type: string
+      label: Key name
+      description: Name for SSH keypair used to access instances
+      default: compute_host_key
+      
+resources:
+    networking_infrastructure:
+      type: cluster_network.yaml
+      properties:
+        network_name: {get_param: network_name}
+        subnet_cidr: {get_param: subnet_cidr}
+        external_network: {get_param: external_network}
+    
+    headnode_infrastructure:
+      type: autoscale_headnode.yaml
+      properties:
+        image: {get_param: image}
+        key: {get_param: key}
+        flavor: {get_param: flavor}
+        network: {get_param: network_name}
+        subnet_id: {get_attr: [networking_infrastructure, compute_net]}
+        external_network_id: {get_param: external_network}
+            
+    compute_infrastructure:
+      type: autoscale_cluster.yaml
+      properties:
+        internal_net: {get_attr: [networking_infrastructure, compute_net]} 
+        flavor: { get_param: flavor }
+        image: { get_param: image }
+        ssh_key: { get_param: key }
+        cluster_size: {get_param: cluster_size}

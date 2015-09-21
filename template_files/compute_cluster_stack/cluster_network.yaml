@@ -1,0 +1,69 @@
+#####################################################################################################
+# Script: cluster_network.yaml
+# Author: Kyle Robertson
+# Date: September 18, 2015
+# Company: Worlcom Exchange Inc.
+# Description: A HEAT template that deploys the networking resources for the autoscale_cluster_yaml
+# stack
+#####################################################################################################
+
+heat_template_version: 2014-10-16
+description: Homogenous compute cluster
+
+parameters:
+    network_name:
+      type: string
+      label: Network Name
+      description: A short, descriptive name for the network of this computing cluster
+      constraints:
+        - allowed_pattern: "^[A-Za-z]+[a-zA-Z0-9_-]*$"
+    subnet_cidr:
+      type: string
+      label: Internal Subnet CIDR
+      description: "The CIDR of the subnet instances will connect to. Ex: 10.20.30.0/24"
+      constraints:
+        - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+/[0-9]+$"    
+    external_network:
+      type: string
+      label: External Network Name
+      description: The name of the external network where floating IP's for environment exist
+      default: net04_ext
+          
+resources:
+   compute_network:
+     type: OS::Neutron::Net
+     properties:
+       name: {get_param: network_name}
+
+   compute_network_subnet:
+     type: OS::Neutron::Subnet
+     properties:
+       network_id: { get_resource: compute_network }
+       cidr: {get_param: subnet_cidr}
+       dns_nameservers: [ "8.8.8.8", "8.8.4.4" ]
+       ip_version: 4
+
+   compute_router:
+     type: OS::Neutron::Router
+     properties:
+       external_gateway_info: { network: {get_param: external_network} }
+
+   internal_interface:
+     type: OS::Neutron::RouterInterface
+     properties:
+       router_id: { get_resource: compute_router }
+       subnet: { get_resource: compute_network_subnet }
+       
+    #perimeter_firewall:
+    #  type: OS::Neutron::Firewall
+    #  properties:
+    #    name: Perimeter_Firewall
+    #    firewall_policy_id: {get_resource: A_POLICY}
+    
+outputs:
+    compute_net:
+      value: {get_resource: compute_network}
+       
+    
+
+  
