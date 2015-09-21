@@ -1,0 +1,48 @@
+#####################################################################################################
+# Script: load_balanced_web_servers.yaml
+# Author: Kyle Robertson
+# Date: September 9, 2015
+# Company: Worlcom Exchange Inc.
+# Description: This is a HEAT template for deploying load balanced virtual web servers
+#####################################################################################################
+
+heat_template_version: 2013-05-23
+descriptions: Load balanced web servers
+
+parameters:
+  cluster_size:
+    type: string
+    description: Number of servers in the cluster
+    default: 2
+  image:
+    type: string
+    label: Image name or ID
+    description: Bootable image used to boot all instances
+    default: TestVM
+  flavor:
+    type: string
+    label: Instance flavor
+    description: Type of flavor that defines virtual resources for instance
+    # Need to add list of available choices
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name for SSH keypair used to access instance
+    default: my_ssh_key
+  internal_net:
+    type: string
+    label: Internal tenant network name or ID
+    description: Tenant network to attach instance to
+  internal_subnet:
+    type: string
+    description: subnet on which load balancer will be located
+  pool_id:
+    type: string
+    description: Name of resource pool to contact
+  external_net:
+    type: string
+    description: UUID of external network to give instances internet access
+    
+  
+  

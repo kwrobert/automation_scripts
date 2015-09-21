@@ -1,0 +1,33 @@
+heat_template_version: 2013-05-23
+
+resources:
+    net04:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            name: net04
+            admin_state_up: True
+    net04_ext:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            name: net04_ext
+            admin_state_up: True
+    net04__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            allocation_pools: [{"start": "192.168.111.2",  "end": "192.168.111.254"}]
+            cidr: 192.168.111.0/24
+            name: net04__subnet
+            network: 44629d90-3e44-4597-94d8-98532217b9f0
+    net04_ext__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            allocation_pools: [{"start": "10.20.2.131",  "end": "10.20.2.254"}]
+            cidr: 10.20.2.0/24
+            name: net04_ext__subnet
+            network: 366eeb1f-697c-4962-aa8a-a6014a84777a

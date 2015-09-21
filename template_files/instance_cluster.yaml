@@ -1,0 +1,62 @@
+#####################################################################################################
+# Script: instance_cluster.yaml
+# Author: Kyle Robertson
+# Date: September 18, 2015
+# Company: Worlcom Exchange Inc.
+# Description: A simple HEAT template to deploy a cluster of identical servers
+#####################################################################################################
+
+heat_template_version: 2013-05-23
+description: Homogenous compute cluster
+
+parameters:
+  cluster_size:
+    type: number
+    description: Number of servers in the cluster
+    default: 2
+  image:
+    type: string
+    label: Image name or ID
+    description: Bootable image used to boot all instances
+    default: TestVM
+  flavor:
+    type: string
+    label: Instance flavor
+    description: Type of flavor that defines virtual resources for instance
+    # Need to add list of available choices
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name for SSH keypair used to access instance
+    default: my_ssh_key
+  internal_net:
+    type: string
+    label: Internal tenant network name or ID
+    description: Tenant network to attach instance to
+  external_net:
+    type: string
+    description: UUID of external network to give instances internet access
+    default: c312096b-9dc4-4929-90f4-54602c3ba97f
+resources:
+  compute_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: cluster_size }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: compute_instance_%index%
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          key_name: { get_param: key }
+          networks:
+            - network: {get_param: internal_net} 
+outputs:
+  instance_ip:
+    description: IP addresses of the compute instances
+    value: { get_attr: [compute_cluster, first_address] }
+          
+    
+  
+  

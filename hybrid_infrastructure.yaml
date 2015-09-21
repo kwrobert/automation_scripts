@@ -1,0 +1,77 @@
+heat_template_version: 2013-05-23
+
+resources:
+    TestRouter:
+        type: OS::Neutron::Router
+        properties:
+            external_gateway_info: { network: net04_ext }
+    test_inst_001_to_TestNetwork_subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: TestNetwork_subnet }
+            network: { get_resource: TestNetwork }
+    test_inst_001:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: test_inst_001
+            flavor: m1.small
+            networks:
+                - port: { get_resource: test_inst_001_to_TestNetwork_subnet_port }
+    test_inst_002:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: test_inst_002
+            flavor: m1.small
+            networks:
+                - port: { get_resource: test_inst_002_to_TestNetwork_subnet_port }
+    test_inst_002_to_TestNetwork_subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: TestNetwork_subnet }
+            network: { get_resource: TestNetwork }
+    TestNetwork:
+        type: OS::Neutron::Net
+    net04:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            admin_state_up: True
+            name: net04
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+    net04_ext:
+        type: OS::Neutron::Net
+        properties:
+            shared: False
+            admin_state_up: True
+            name: net04_ext
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+    net04__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            allocation_pools: [{"start": "192.168.111.2",  "end": "192.168.111.254"}]
+            cidr: 192.168.111.0/24
+            network: 44629d90-3e44-4597-94d8-98532217b9f0
+            name: net04__subnet
+    TestRouter_to_TestNetwork_subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: TestRouter}
+            subnet: { get_resource: TestNetwork_subnet }
+    net04_ext__subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            tenant_id: 08d2af07dadd4459bdd7d987c2a19753
+            allocation_pools: [{"start": "10.20.2.131",  "end": "10.20.2.254"}]
+            cidr: 10.20.2.0/24
+            network: 366eeb1f-697c-4962-aa8a-a6014a84777a
+            name: net04_ext__subnet
+    TestNetwork_subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: TestNetwork }
+            cidr: 10.20.20.0/24

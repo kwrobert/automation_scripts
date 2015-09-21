@@ -1,0 +1,47 @@
+heat_template_version: 2013-05-23
+
+resources:
+    test_inst_001:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: test_inst_001
+            flavor: m1.small
+            networks:
+                - port: { get_resource: test_inst_001_to_TestNetwork_subnet_port }
+    test_inst_002:
+        type: OS::Nova::Server
+        properties:
+            image: TestVM
+            name: test_inst_002
+            flavor: m1.small
+            networks:
+                - port: { get_resource: test_inst_002_to_TestNetwork_subnet_port }
+    TestNetwork:
+        type: OS::Neutron::Net
+    test_inst_002_to_TestNetwork_subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: TestNetwork_subnet }
+            network: { get_resource: TestNetwork }
+    TestRouter:
+        type: OS::Neutron::Router
+        properties:
+            external_gateway_info: { network: net04_ext }
+    TestNetwork_subnet:
+        type: OS::Neutron::Subnet
+        properties:
+            network_id: { get_resource: TestNetwork }
+            cidr: 10.20.20.0/24
+    TestRouter_to_TestNetwork_subnet_interface:
+        type: OS::Neutron::RouterInterface
+        properties:
+            router_id: { get_resource: TestRouter}
+            subnet: { get_resource: TestNetwork_subnet }
+    test_inst_001_to_TestNetwork_subnet_port:
+        type: OS::Neutron::Port
+        properties:
+            fixed_ips:
+                - subnet_id: { get_resource: TestNetwork_subnet }
+            network: { get_resource: TestNetwork }
