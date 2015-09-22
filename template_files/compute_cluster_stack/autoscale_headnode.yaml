@@ -1,6 +1,7 @@
 
 heat_template_version: 2014-10-16
 description: AutoScaling, Load-balanced TORQUE headnodes
+
 parameters:
   image:
     type: string
@@ -19,7 +20,11 @@ parameters:
     description: subnet on which the load balancer will be located
   external_network_id:
     type: string
-    description: UUID of a Neutron external network
+    description: UUID of external network
+  sec_group:
+    type: string
+    description: Security group for headnodes
+    
 resources:
 
   monitor:
@@ -55,8 +60,8 @@ resources:
   headnode_asg:
     type: OS::Heat::AutoScalingGroup
     properties:
-      min_size: 1
-      max_size: 3
+      min_size: 2
+      max_size: 5
       resource:
         type: torque_headnode.yaml
         properties:
@@ -65,6 +70,7 @@ resources:
           key_name: {get_param: key}
           network: {get_param: network}
           pool_id: {get_resource: pool}
+          sec_group: {get_param: sec_group}
           metadata: {"metering.stack": {get_param: "OS::stack_id"}}
           
   web_server_scaleup_policy:
@@ -89,7 +95,7 @@ resources:
       statistic: avg
       period: 60
       evaluation_periods: 1
-      threshold: 50
+      threshold: 75
       alarm_actions:
         - {get_attr: [web_server_scaleup_policy, alarm_url]}
       matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
@@ -124,15 +130,10 @@ outputs:
   pool_ip_address:
     value: {get_attr: [pool, vip, address]}
     description: The IP address of the load balancing pool
-  website_url:
-    value:
-      str_replace:
-        template: http://host/wordpress/
-        params:
-          host: { get_attr: [lb_floating, floating_ip_address] }
+  lb_pool_floating_ip:
+    value: { get_attr: [lb_floating, floating_ip_address] }
     description: >
-      This URL is the "external" URL that can be used to access the
-      Wordpress site.
+      This is the floating IP address of the load balancer 
   ceilometer_query:
     value:
       str_replace:

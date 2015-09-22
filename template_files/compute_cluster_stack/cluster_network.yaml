@@ -28,6 +28,12 @@ parameters:
       label: External Network Name
       description: The name of the external network where floating IP's for environment exist
       default: net04_ext
+    source_cidr:
+      type: string
+      label: Source network CIDR
+      description: THe name of the source network where all traffic to the headnodes will be coming from
+      constraints:
+        - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+/[0-9]+$"
           
 resources:
    compute_network:
@@ -54,15 +60,49 @@ resources:
        router_id: { get_resource: compute_router }
        subnet: { get_resource: compute_network_subnet }
        
-    #perimeter_firewall:
-    #  type: OS::Neutron::Firewall
-    #  properties:
-    #    name: Perimeter_Firewall
-    #    firewall_policy_id: {get_resource: A_POLICY}
-    
+   headnode_sec_group:
+     type: OS::Neutron::SecurityGroup
+     properties:
+       name: headnode_security_group
+       rules: 
+         # Remote subnet ingress access 
+         - {"protocol": icmp,"direction":ingress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: source_cidr}}
+         - {"protocol": tcp,"direction":ingress,"port_range_min": 22,"port_range_max": 22,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: source_cidr}}
+         # Ingress/egress to compute_network_subnet
+         - {"protocol": icmp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": tcp,"direction":egress,"port_range_min": 22,"port_range_max": 22,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": icmp,"direction":ingress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": tcp,"direction":ingress,"port_range_min": 22,"port_range_max": 22,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}   
+         # Egress to all
+         - {"protocol": icmp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+         - {"protocol": tcp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+         - {"protocol": udp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+         
+         
+   computenode_sec_group:
+     type: OS::Neutron::SecurityGroup
+     properties:
+       name: computenode_security_group
+       rules: 
+         # Ingress/egress to compute_network_subnet
+         - {"protocol": icmp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": tcp,"direction":egress,"port_range_min": 22,"port_range_max": 22,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": icmp,"direction":ingress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         - {"protocol": tcp,"direction":ingress,"port_range_min": 22,"port_range_max": 22,"remote_mode": remote_ip_prefix,"remote_ip_prefix": {get_param: subnet_cidr}}
+         # Egress to all
+         - {"protocol": icmp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+         - {"protocol": tcp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+         - {"protocol": udp,"direction":egress,"remote_mode": remote_ip_prefix,"remote_ip_prefix": 0.0.0.0/0}
+              
 outputs:
     compute_net:
       value: {get_resource: compute_network}
+    compute_net_subnet:
+      value: {get_resource: compute_network_subnet}
+    headnode_sec_group: 
+      value: {get_resource: headnode_sec_group}
+    computenode_sec_group:
+      value: {get_resource: computenode_sec_group}
        
     
 

@@ -15,7 +15,7 @@ parameters:
     network_name:
       type: string
       label: Network Name
-      description: A short, descriptive name for the network of this computing cluster
+      description: A short, descriptive name for the internal network of this computing cluster
       constraints:
         - allowed_pattern: "^[A-Za-z]+[a-zA-Z0-9_-]*$"
     subnet_cidr:
@@ -26,9 +26,15 @@ parameters:
         - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+/[0-9]+$"    
     external_network:
       type: string
-      label: External Network Name
-      description: The name of the external network where floating IP's for environment exist
-      default: net04_ext
+      label: External Network UUID
+      description: UUID of the external network where floating IP's for environment exist
+      default: 9dae46e3-d117-4feb-80f1-378cad1134f5
+    source_network:
+      type: string
+      label: Source Network CIDR
+      description: >
+        CIDR of subnet that all traffic to the head nodes will be 
+        coming from
     # Computing parameters
     cluster_size:
       type: number
@@ -64,6 +70,7 @@ resources:
         network_name: {get_param: network_name}
         subnet_cidr: {get_param: subnet_cidr}
         external_network: {get_param: external_network}
+        source_cidr: {get_param: source_network}
     
     headnode_infrastructure:
       type: autoscale_headnode.yaml
@@ -72,8 +79,9 @@ resources:
         key: {get_param: key}
         flavor: {get_param: flavor}
         network: {get_param: network_name}
-        subnet_id: {get_attr: [networking_infrastructure, compute_net]}
+        subnet_id: {get_attr: [networking_infrastructure, compute_net_subnet]}
         external_network_id: {get_param: external_network}
+        sec_group: {get_attr: [networking_infrastructure, headnode_sec_group]}
             
     compute_infrastructure:
       type: autoscale_cluster.yaml
@@ -83,3 +91,21 @@ resources:
         image: { get_param: image }
         ssh_key: { get_param: key }
         cluster_size: {get_param: cluster_size}
+        internal_net: { get_param: network_name }
+        sec_group: {get_attr: [networking_infrastructure, computenode_sec_group]}
+        
+    perimeter_security:
+      type: cluster_security.yaml
+      properties:
+        load_balancer_ip: {get_attr: [headnode_infrastructure, lb_pool_floating_ip]}
+        pool_ip: {get_attr: [headnode_infrastructure, pool_ip_address]} 
+        source_cidr: {get_param: source_network} 
+        internal_subnet_cidr: {get_param: subnet_cidr}
+        
+outputs:
+  load_balancer_ip: 
+    description: >
+      Public facing IP address of the load balancer for the head nodes. This is
+      the IP address used to SSH into any of the head nodes. 
+    value: 
+      {get_attr: [headnode_infrastructure, lb_pool_floating_ip]}

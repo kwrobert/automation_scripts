@@ -1,0 +1,100 @@
+#####################################################################################################
+# Script: cluster_security.yaml
+# Author: Kyle Robertson
+# Date: September 18, 2015
+# Company: Worlcom Exchange Inc.
+# Description: A HEAT template that deploys the proper security policies for the compute cluster
+#####################################################################################################
+
+heat_template_version: 2014-10-16
+description: Homogenous compute cluster
+
+parameters:
+
+  load_balancer_ip:
+    type: string
+    label: Floating IP of Load Balancer
+    description: "The public (i.e floating) IP address of the load balancer for the headnode autoscaling group"
+    constraints:
+      - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+$"
+  pool_ip:
+    type: string
+    label: Internal IP of Load Balancer
+    description: "The internal IP address of the load balancer for the headnode autoscaling group"
+    constraints:
+      - allowed_pattern: "^[0-9]+.[0-9]+.[0-9]+.[0-9]+$"
+  source_cidr:
+    type: string
+    label: Source Network CIDR
+    description: "CIDR of the source networks/subnets where traffic to the head nodes will be coming from"
+  internal_subnet_cidr:
+    type: string  
+    label: Internal Subnet CIDR
+    description: "CIDR of the internal subnet that all the headnodes and compute nodes are connected to"
+      
+resources:
+  
+  public_ssh_rule:
+    type: OS::Neutron::FirewallRule
+    properties:
+      name: allow_ssh_public
+      description: Allow SSH access on TCP port 22 to head nodes
+      action: allow
+      protocol: tcp
+      destination_port: 22
+      destination_ip_address: {get_param: load_balancer_ip}
+      source_ip_address: {get_param: source_cidr}
+   
+  public_icmp_rule:
+    type: OS::Neutron::FirewallRule
+    properties:
+      name: allow_icmp_public
+      description: Allow ICMP access to head nodes
+      action: allow
+      protocol: icmp
+      destination_ip_address: {get_param: load_balancer_ip}
+      source_ip_address: {get_param: source_cidr} 
+      
+  private_ssh_rule:
+    type: OS::Neutron::FirewallRule
+    properties:
+      name: allow_ssh_private
+      description: Allow SSH access on TCP port 22 to head nodes
+      action: allow
+      protocol: tcp
+      destination_port: 22
+      destination_ip_address: {get_param: pool_ip}
+      source_ip_address: {get_param: source_cidr}
+   
+  private_icmp_rule:
+    type: OS::Neutron::FirewallRule
+    properties:
+      name: allow_icmp_private
+      description: Allow ICMP access to head nodes
+      action: allow
+      protocol: icmp
+      destination_ip_address: {get_param: pool_ip}
+      source_ip_address: {get_param: source_cidr} 
+      
+  allow_outbound_rule:
+    type: OS::Neutron::FirewallRule
+    properties:
+      name: allow_outbound_traffic
+      description: Allow outbound traffic via all protocols for all nodes on the compute subnet
+      action: allow
+      source_ip_address: {get_param: internal_subnet_cidr}
+      destination_ip_address: 0.0.0.0/0
+      
+  perimeter_policy:
+    type: OS::Neutron::FirewallPolicy
+    properties:
+      firewall_rules: [{get_resource: public_ssh_rule},{get_resource: public_icmp_rule},{get_resource: private_ssh_rule},{get_resource: private_icmp_rule},{get_resource: allow_outbound_rule}]
+         
+  perimeter_firewall:
+    type: OS::Neutron::Firewall
+    properties:
+      name: perimeter_firewall
+      description: >
+        A perimeter firewall that allowes ICMP and SSH access to the load_balanced 
+        pools of headnodes and blocks all other access to the environment
+      firewall_policy_id: {get_resource: perimeter_policy}

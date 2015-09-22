@@ -42,6 +42,10 @@ parameters:
     type: string
     label: Internal tenant network name or ID
     description: Tenant network to attach instance to
+  sec_group:
+    type: string
+    label: Compute Node Security Group
+    description: Security group for compute nodes to give them access to one another and to headnodes
     
 resources:
   compute_cluster:
@@ -50,28 +54,14 @@ resources:
       min_size: { get_param: cluster_size }
       max_size: 20
       resource:
-        type: OS::Nova::Server
+        type: compute_node.yaml
         properties:
-          name: compute_instance
           flavor: { get_param: flavor }
           image: { get_param: image }
           key_name: { get_param: ssh_key }
-          networks:
-            - network: {get_param: internal_net} 
-          user_data_format: RAW
-          user_data: |
-            #cloud-config
-            users:
-              - name: demo
-                groups: sudo
-                shell: /bin/bash
-                sudo: ['ALL=(ALL) NOPASSWD:ALL']
-            chpasswd:
-              list: |
-                demo:demo-password
-            runcmd:
-              - touch /test.txt
-              - sudo apt-get install stress
+          network: {get_param: internal_net} 
+          sec_group: {get_param: sec_group}
+          metadata: {"metering.stack": {get_param: "OS::stack_id"}}
           
   scale_up_policy:
     type: OS::Heat::ScalingPolicy
@@ -90,16 +80,29 @@ resources:
   high_cpu_alarm:
     type: OS::Ceilometer::Alarm
     properties:
-      description: Add instance if average CPU utilization of group is too high ( > 75% ) 
+      description: Add instance if average CPU utilization of group > 50% for 30 seconds 
       meter_name: cpu_util
       statistic: avg
       period: 30
       evaluation_periods: 1
-      threshold: 75
+      threshold: 50
       comparison_operator: gt
       alarm_actions:
         - {get_attr: [scale_up_policy, alarm_url]}  
-      matching_metadata: {'metadata.user_ metadata.stack':{get_param: "OS::stack_id"}}  
+      matching_metadata: {'metadata.user_metadata.stack':{get_param: "OS::stack_id"}}  
+  cpu_alarm_low:
+    type: OS::Ceilometer::Alarm
+    properties:
+      description: Delete instance if the average CPU < 10% for 10 minutes
+      meter_name: cpu_util
+      statistic: avg
+      period: 600
+      evaluation_periods: 1
+      threshold: 10
+      alarm_actions:
+        - {get_attr: [scale_down_policy, alarm_url]}
+      matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
+      comparison_operator: lt
 outputs:
   server_ips:
     description: List of IP addresses of the compute servers
